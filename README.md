@@ -219,3 +219,8 @@ Planned connections (4 of 10): Chase, Capital One, Citi, Fidelity.
   Zelle (e.g. rent) is a real expense and is never excluded from spending.
 - `holdings.cost_basis` may be null (Plaid does not guarantee it for Fidelity); manual
   entry fills the gap. Net worth and allocation work without it.
+
+## Licence
+
+[MIT](LICENSE). Use it, change it, ship it — no warranty, and nothing here is
+financial advice.
