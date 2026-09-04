@@ -1,0 +1,35 @@
+# Secrets & local state — NEVER commit
+.env
+personal_rules.json
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+statements/
+backups/
+*.log
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# macOS
+.DS_Store
+
+# Vite build output (generated from frontend/)
+backend/talents/static/
+backups/
+
+# Mac app build output (regenerate with scripts/build_app.sh)
+build/
+dist/
+assets/Talents.icns
+scripts/notion_budgets.json

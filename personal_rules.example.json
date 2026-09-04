@@ -1,0 +1,5 @@
+{
+  "_note": "Copy to personal_rules.json (git-ignored) for merchants only you would recognise: your church, your landlord, a family member you pay by name. Keys are matched as lowercase substrings against the merchant text; the longest match wins. Values must be an existing category name.",
+  "your church name": "Donations",
+  "zelle payment to jane doe": "Rent/Mortgage"
+}

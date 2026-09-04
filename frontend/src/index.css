@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f6f0e1;
+  --color-brand-500: #2e7268;
+  --color-brand-600: #1e5f63;
+  --color-brand-700: #12474a;
+  --color-gold-400: #f5d277;
+  --color-gold-500: #e3b341;
+  --color-gold-600: #c6942b;
+  --color-clay-500: #c4795a;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  background: #f7f7f8;
+  color: #16191d;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures stop money columns jittering as values change. */
+.tnum { font-variant-numeric: tabular-nums; }
