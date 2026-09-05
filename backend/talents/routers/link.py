@@ -1,6 +1,7 @@
 """Plaid Link: connect institutions and persist encrypted access tokens."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
 
@@ -52,6 +53,69 @@ class PlaidCredentials(BaseModel):
     client_id: str
     secret: str
     plaid_env: str = "production"
+
+
+def _plaid_error_code(exc: Exception) -> str:
+    """Plaid's own reason for a refusal, or "" when it did not give one.
+
+    The SDK raises with the response body attached as JSON rather than putting
+    anything useful in the message, so without unpacking it every failure looks
+    identical to the caller.
+    """
+    body = getattr(exc, "body", None)
+    if not body:
+        return ""
+    try:
+        return str(json.loads(body).get("error_code") or "")
+    except (ValueError, TypeError):
+        return ""
+
+
+def _diagnose(client_id: str, secret: str, env: str, exc: Exception) -> str:
+    """Say what is actually wrong, rather than that something is.
+
+    `INVALID_API_KEYS` covers both a mistyped key and a perfectly good key used
+    against the wrong environment, and by far the most common version of the
+    latter is pasting the Sandbox secret: it is the one the dashboard shows first,
+    and it sits directly above the production secret it gets confused with. The
+    two are told apart by trying the other environment - if the credentials work
+    there, nothing is wrong with them except where they were pointed.
+    """
+    code = _plaid_error_code(exc)
+    if code and code != "INVALID_API_KEYS":
+        return f"Plaid refused these credentials: {code}."
+
+    other = "sandbox" if env.lower() == "production" else "production"
+    try:
+        plaid_client.create_link_token(
+            plaid_client.make_client(_Credentials(client_id, secret, other)),
+            PRODUCTS_BY_KIND["bank"],
+            required_if_supported=IF_SUPPORTED_BY_KIND["bank"],
+        )
+    except Exception:
+        return (
+            "Plaid does not recognise that client ID and secret. Copy them again "
+            "from Developers → Keys, and check the client ID has not picked up a "
+            "stray space."
+        )
+
+    if other == "sandbox":
+        return (
+            "Those are your Sandbox keys. Sandbox only returns made-up test data, "
+            "so Talents needs the Production secret instead — same page, same "
+            "client ID, but the secret listed under Production. If there is no "
+            "production secret there yet, apply for the free Trial plan first."
+        )
+    return "Those keys work in Production. Switch the environment to production."
+
+
+class _Credentials:
+    """The two fields make_client actually reads, without touching the real settings."""
+
+    def __init__(self, client_id: str, secret: str, env: str):
+        self.plaid_client_id = client_id
+        self.plaid_secret = secret
+        self.plaid_env = env
 
 
 @router.get("/setup")
@@ -107,11 +171,9 @@ def save_credentials(payload: PlaidCredentials) -> dict:
             "PLAID_ENV": previous.plaid_env,
         })
         reload_settings()
-        log.warning("Rejected Plaid credentials: %s", str(exc)[:200])
-        raise HTTPException(
-            400, "Plaid rejected those credentials. Check they are the "
-                 f"{payload.plaid_env} pair from the dashboard."
-        ) from exc
+        log.warning("Rejected Plaid credentials (%s): %s",
+                    _plaid_error_code(exc) or "no code", str(exc)[:200])
+        raise HTTPException(400, _diagnose(client_id, secret, payload.plaid_env, exc)) from exc
 
     log.info("Plaid credentials saved to %s", ENV_PATH)
     return {"configured": True, "plaid_env": settings.plaid_env}

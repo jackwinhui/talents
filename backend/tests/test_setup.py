@@ -66,7 +66,7 @@ def test_credentials_that_plaid_rejects_are_not_kept(client, env_file, monkeypat
 
     resp = client.post("/api/link/setup", json={"client_id": "typo", "secret": "wrong"})
     assert resp.status_code == 400
-    assert "rejected" in resp.json()["detail"].lower()
+    assert "does not recognise" in resp.json()["detail"].lower()
     # Rolled back, so the next launch is not left holding a pair known to fail.
     assert client.get("/api/link/setup").json()["configured"] is False
     assert "typo" not in env_file.read_text()
@@ -122,3 +122,76 @@ def test_the_secret_is_never_sent_back(client, env_file, monkeypatch):
     body = client.get("/api/link/setup").json()
     assert "topsecret" not in str(body)
     assert "abc123" not in str(body)
+
+
+def _plaid_error(code: str) -> Exception:
+    """A refusal shaped like the SDK's, which carries its reason in `body`."""
+    exc = RuntimeError("plaid said no")
+    exc.body = f'{{"error_code": "{code}", "error_type": "INVALID_INPUT"}}'
+    return exc
+
+
+def test_sandbox_keys_are_named_as_such_rather_than_called_invalid(client, monkeypatch):
+    """The most common first-run mistake, and the least obvious from the error.
+
+    Plaid answers INVALID_API_KEYS whether the keys are wrong or merely pointed at
+    the wrong environment, so being told they are invalid sends someone off to
+    re-copy keys that were right all along.
+    """
+    def only_sandbox_works(plaid_api, *args, **kwargs):
+        if getattr(plaid_api, "_env", None) == "sandbox":
+            return "link-sandbox-token"
+        raise _plaid_error("INVALID_API_KEYS")
+
+    monkeypatch.setattr(
+        link.plaid_client, "make_client",
+        lambda s: type("C", (), {"_env": s.plaid_env})(),
+    )
+    monkeypatch.setattr(link.plaid_client, "create_link_token", only_sandbox_works)
+
+    resp = client.post("/api/link/setup", json={"client_id": "abc", "secret": "sandbox-sec"})
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "Sandbox" in detail
+    assert "Production secret" in detail
+
+
+def test_keys_that_work_nowhere_are_reported_as_wrong(client, monkeypatch):
+    monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
+    monkeypatch.setattr(
+        link.plaid_client, "create_link_token",
+        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("INVALID_API_KEYS")),
+    )
+
+    detail = client.post(
+        "/api/link/setup", json={"client_id": "typo", "secret": "typo"}
+    ).json()["detail"]
+    assert "does not recognise" in detail
+    assert "Sandbox" not in detail
+
+
+def test_a_different_refusal_is_passed_through_not_guessed_at(client, monkeypatch):
+    """Not every rejection is about the keys; saying so would send people in circles."""
+    monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
+    monkeypatch.setattr(
+        link.plaid_client, "create_link_token",
+        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("PRODUCTS_NOT_ENABLED")),
+    )
+
+    detail = client.post(
+        "/api/link/setup", json={"client_id": "abc", "secret": "def"}
+    ).json()["detail"]
+    assert "PRODUCTS_NOT_ENABLED" in detail
+
+
+def test_a_failed_attempt_still_leaves_nothing_behind(client, env_file, monkeypatch):
+    """Diagnosis must not come at the cost of the rollback."""
+    monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
+    monkeypatch.setattr(
+        link.plaid_client, "create_link_token",
+        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("INVALID_API_KEYS")),
+    )
+
+    client.post("/api/link/setup", json={"client_id": "nope", "secret": "nope"})
+    assert client.get("/api/link/setup").json()["configured"] is False
+    assert "nope" not in env_file.read_text()
