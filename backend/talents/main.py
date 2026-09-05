@@ -18,7 +18,7 @@ from .routers import data, link
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-app = FastAPI(title="Talents", version="0.1.1")
+app = FastAPI(title="Talents", version="0.1.2")
 app.include_router(link.router)
 app.include_router(data.router)
 

@@ -5,6 +5,7 @@ this module only holds the API credentials needed to talk to Plaid.
 """
 from __future__ import annotations
 
+import os
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -49,6 +50,32 @@ def _resource_dir() -> Path:
 
 
 RESOURCE_DIR = _resource_dir()
+
+
+def _use_bundled_certificates() -> None:
+    """Point TLS verification at the certificates shipped inside the app.
+
+    Python resolves its default CA file to a path inside the python.org framework
+    - `/Library/Frameworks/Python.framework/.../cert.pem`. That exists on a machine
+    with python.org Python installed, which means the developer's, and on nobody
+    else's. Frozen and left alone, every HTTPS call fails certificate verification,
+    which surfaces as a connection error and reads as though the user's internet is
+    at fault rather than the app shipping no root certificates.
+
+    Set through the environment because urllib3, requests and ssl all read these,
+    and the Plaid SDK builds its own pool manager where passing a path is not an
+    option. Anything already set by the user is left alone.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    bundled = RESOURCE_DIR / "certifi" / "cacert.pem"
+    if not bundled.is_file():
+        return
+    for name in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+        os.environ.setdefault(name, str(bundled))
+
+
+_use_bundled_certificates()
 
 # One definition: the file the settings are read from is the same one the in-app
 # setup writes to. Kept above Settings so the model can point at it directly

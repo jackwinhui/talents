@@ -7,6 +7,7 @@
 # explicitly or the server starts and then fails to serve anything.
 from pathlib import Path
 
+import certifi
 from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path(SPECPATH)
@@ -15,6 +16,11 @@ PKG = ROOT / "backend" / "talents"
 datas = [
     (str(PKG / "static"), "talents/static"),
     (str(ROOT / "assets"), "assets"),
+    # Root certificates. Python resolves these to a path inside the python.org
+    # framework, which is present on a developer's Mac and on nobody else's, so
+    # without shipping them every HTTPS call fails with a certificate error that
+    # looks like the user's internet is broken.
+    (certifi.where(), "certifi"),
 ]
 
 hiddenimports = [
@@ -29,6 +35,7 @@ hiddenimports = [
     "uvicorn.lifespan.off",
     # SQLAlchemy resolves its dialect from the URL string.
     "sqlalchemy.dialects.sqlite",
+    "certifi",
     *collect_submodules("plaid"),
     *collect_submodules("pydantic_settings"),
     # The native window. pywebview picks its backend at runtime by name, and the
@@ -88,8 +95,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "Talents",
         "CFBundleDisplayName": "Talents",
-        "CFBundleShortVersionString": "0.1.1",
-        "CFBundleVersion": "0.1.1",
+        "CFBundleShortVersionString": "0.1.2",
+        "CFBundleVersion": "0.1.2",
         # A real windowed app, not a background helper: it owns a Dock icon and a
         # menu bar, and the window is the app rather than a browser tab.
         "LSUIElement": False,
