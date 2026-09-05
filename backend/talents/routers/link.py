@@ -400,7 +400,12 @@ async function refresh(){
 async function open_(kind){
   const out = document.getElementById('out');
   out.textContent = 'Requesting link token…';
-  const r = await fetch('/api/link/token?kind='+kind);
+  // Re-authorising an existing Item goes through update mode, which does not
+  // consume another Plaid Trial slot.
+  const id = new URLSearchParams(location.search).get('reconnect');
+  const url = id ? '/api/link/reconnect?institution_id='+encodeURIComponent(id)
+                 : '/api/link/token?kind='+kind;
+  const r = await fetch(url);
   if(!r.ok){ out.textContent = 'Error: '+await r.text(); return; }
   const {link_token} = await r.json();
   out.textContent = 'Opening Plaid…';
@@ -420,6 +425,14 @@ async function open_(kind){
                                              : 'Closed without connecting.'; refresh(); }
   }).open();
 }
+
+// Opened from the app window, which cannot host Plaid's OAuth popup itself.
+// The kind is already known, so go straight in rather than asking again.
+window.addEventListener('DOMContentLoaded', () => {
+  const q = new URLSearchParams(location.search);
+  if (q.has('reconnect')) return open_('bank');
+  if (q.has('kind')) return open_(q.get('kind'));
+});
 refresh();
 </script></body></html>"""
 

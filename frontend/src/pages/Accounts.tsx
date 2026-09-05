@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AccountRow, InstitutionRow } from '../api'
-import { api, money } from '../api'
+import { api, inNativeWindow, money } from '../api'
 import { CsvImport } from '../components/CsvImport'
 import { PlaidSetup } from '../components/PlaidSetup'
 import { Card, Empty, Pill, Skeleton } from '../components/ui'
@@ -119,27 +119,72 @@ export function Accounts() {
         title="Connected institutions"
         action={
           <div className="flex gap-2">
-            <button
-              onClick={() => connect('bank')}
-              disabled={!plaidReady}
-              className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white
-                         hover:bg-brand-700 disabled:opacity-50"
-            >
-              Add bank or card
-            </button>
-            <button
-              onClick={() => connect('investments')}
-              disabled={!plaidReady}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium
-                         text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Add brokerage
-            </button>
+            {inNativeWindow ? (
+              // Banks that use OAuth send you to their own site in a popup, and a
+              // WKWebView refuses to open one, so the button silently does nothing.
+              // Real links are handed to the browser, where the flow works.
+              <>
+                <a
+                  href="/api/link/?kind=bank"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white
+                             hover:bg-brand-700"
+                >
+                  Add bank or card
+                </a>
+                <a
+                  href="/api/link/?kind=investments"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium
+                             text-gray-700 hover:bg-gray-50"
+                >
+                  Add brokerage
+                </a>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => connect('bank')}
+                  disabled={!plaidReady}
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white
+                             hover:bg-brand-700 disabled:opacity-50"
+                >
+                  Add bank or card
+                </button>
+                <button
+                  onClick={() => connect('investments')}
+                  disabled={!plaidReady}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium
+                             text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Add brokerage
+                </button>
+              </>
+            )}
           </div>
         }
       >
         {note && (
           <p className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">{note}</p>
+        )}
+
+        {inNativeWindow && (
+          <p className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2
+                        text-xs text-gray-600">
+            <span>
+              Connecting opens your browser, because banks run their login on their own
+              site. Come back here when it is done.
+            </span>
+            <button
+              onClick={load}
+              className="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-medium
+                         text-gray-700 hover:bg-gray-50"
+            >
+              Refresh
+            </button>
+          </p>
         )}
 
         {rows.length ? (
@@ -155,14 +200,27 @@ export function Accounts() {
                     </span>
                   )}
                   {i.linked ? (
-                    <button
-                      onClick={() => reconnect(i)}
-                      title="Re-authorize this bank after a broken login or password change. Does not use a Plaid slot."
-                      className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1
-                                 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                    >
-                      Reconnect
-                    </button>
+                    inNativeWindow ? (
+                      <a
+                        href={`/api/link/?reconnect=${i.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Re-authorize this bank after a broken login or password change. Does not use a Plaid slot."
+                        className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1
+                                   text-xs font-medium text-gray-600 hover:bg-gray-50"
+                      >
+                        Reconnect
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => reconnect(i)}
+                        title="Re-authorize this bank after a broken login or password change. Does not use a Plaid slot."
+                        className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1
+                                   text-xs font-medium text-gray-600 hover:bg-gray-50"
+                      >
+                        Reconnect
+                      </button>
+                    )
                   ) : (
                     <Pill>imported</Pill>
                   )}

@@ -95,8 +95,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "Talents",
         "CFBundleDisplayName": "Talents",
-        "CFBundleShortVersionString": "0.1.2",
-        "CFBundleVersion": "0.1.2",
+        "CFBundleShortVersionString": "0.1.3",
+        "CFBundleVersion": "0.1.3",
         # A real windowed app, not a background helper: it owns a Dock icon and a
         # menu bar, and the window is the app rather than a browser tab.
         "LSUIElement": False,

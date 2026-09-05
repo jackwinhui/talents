@@ -99,6 +99,17 @@ export interface InstitutionRow {
   accounts: { id: number; name: string; mask: string | null; type: string; balance: number | null }[]
 }
 
+/** True when the UI is running inside the packaged app's own window.
+ *
+ * The window is a WKWebView, which refuses to open the popup that OAuth banks
+ * rely on: the button does nothing at all and there is no error to see. Anything
+ * that ends up in Plaid Link therefore has to be handed to the real browser.
+ * pywebview injects this object; a browser tab has no such thing.
+ */
+export const inNativeWindow =
+  typeof window !== 'undefined' &&
+  (window as { pywebview?: unknown }).pywebview !== undefined
+
 export interface SetupStatus {
   configured: boolean
   plaid_env: string

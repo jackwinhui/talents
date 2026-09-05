@@ -66,3 +66,29 @@ def test_update_mode_sends_no_products_at_all():
                 access_token="access-test-abc")
     assert out["has_products"] is False
     assert out["if_supported"] == []
+
+
+def _link_page() -> str:
+    from talents.routers.link import LINK_PAGE
+
+    return LINK_PAGE
+
+
+def test_the_link_page_can_be_opened_straight_into_a_flow():
+    """The app window hands this page to the browser with the choice already made.
+
+    Plaid's OAuth banks open their own login in a popup, and the WKWebView the app
+    draws its window with refuses to create one - the button does nothing at all.
+    The browser gets the flow instead, and should not ask the person to pick the
+    same thing a second time.
+    """
+    page = _link_page()
+    assert "DOMContentLoaded" in page
+    assert "q.has('kind')" in page
+    assert "q.has('reconnect')" in page
+
+
+def test_the_link_page_supports_reconnecting_an_existing_item():
+    """Update mode re-authorises without spending another Trial slot."""
+    page = _link_page()
+    assert "/api/link/reconnect?institution_id=" in page
