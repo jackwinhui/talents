@@ -69,8 +69,11 @@ launch shows the window that is already open rather than starting a rival server
 2. **Go to Accounts.** Because no credentials are stored, it shows a short setup
    form instead of the usual connect buttons.
 3. **Get free Plaid keys.** The form links to
-   [dashboard.plaid.com](https://dashboard.plaid.com/signup). Sign up, then copy the
-   **production** client ID and secret from *Developers → Keys*.
+   [dashboard.plaid.com](https://dashboard.plaid.com/signup). When Plaid asks what
+   you are signing up for, choose **Personal use** — *App user* is for people
+   linking a bank to somebody else's app and gets you no keys. Accept the free
+   **Trial plan** (auto-approved, real bank data, ten institutions), then copy the
+   client ID and the **production** secret from *Developers → Keys*.
 4. **Paste them in and press Save.** They are checked against Plaid before being
    kept, so a typo is caught there and then rather than later when you try to
    connect a bank. Nothing is written to disk unless they work.
@@ -198,8 +201,11 @@ rather than the public internet.
 
 ## Plaid notes
 
-Uses the **Trial plan**: free, real production data, 10 Items lifetime.
+Uses the **Trial plan**: free, real production data, 10 Items lifetime. Auto-approved
+for most developers, but US/Canada only for signups from 15 April 2026.
 
+- Sign up under **Personal use**. *App user* is the consumer-support path and issues
+  no API keys at all.
 - An *Item* is one bank login — Chase checking + both Chase cards is **one** Item.
 - ⚠️ A slot is consumed on a successful token exchange, and **`/item/remove` does NOT
   free it**. Never delete and re-create connections casually.

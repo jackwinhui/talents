@@ -47,6 +47,22 @@ export function PlaidSetup({ onDone }: { onDone: () => void }) {
         secret from <span className="whitespace-nowrap">Developers → Keys</span>.
       </p>
 
+      <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-gray-600">
+        <li>
+          When Plaid asks what you are signing up for, choose{' '}
+          <strong>Personal use</strong> — not <em>App user</em>, which is for people
+          linking a bank to somebody else's app and will not get you any keys.
+        </li>
+        <li>
+          Accept the free <strong>Trial plan</strong>. It is auto-approved, uses real
+          bank data, and covers ten connected institutions.
+        </li>
+        <li>
+          Open <span className="whitespace-nowrap">Developers → Keys</span> and copy the
+          client ID and the <strong>production</strong> secret — not the sandbox one.
+        </li>
+      </ol>
+
       <div className="mt-4 space-y-3">
         <label className="block">
           <span className="text-xs font-medium text-gray-500">Client ID</span>
