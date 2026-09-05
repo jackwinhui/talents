@@ -60,16 +60,17 @@ def test_connecting_before_setup_is_not_an_error_page(client):
 def test_credentials_that_plaid_rejects_are_not_kept(client, env_file, monkeypatch):
     """A typo must not be written to disk and discovered later at the bank."""
     def refuse(*args, **kwargs):
-        raise RuntimeError("INVALID_API_KEYS")
+        raise plaid_refusal("INVALID_API_KEYS")
 
+    monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
     monkeypatch.setattr(link.plaid_client, "create_link_token", refuse)
 
-    resp = client.post("/api/link/setup", json={"client_id": "typo", "secret": "wrong"})
+    resp = client.post("/api/link/setup", json={"client_id": FAKE_ID, "secret": FAKE_SECRET})
     assert resp.status_code == 400
-    assert "does not recognise" in resp.json()["detail"].lower()
+    assert "Production access" in resp.json()["detail"]
     # Rolled back, so the next launch is not left holding a pair known to fail.
     assert client.get("/api/link/setup").json()["configured"] is False
-    assert "typo" not in env_file.read_text()
+    assert FAKE_ID not in env_file.read_text()
 
 
 def test_working_credentials_are_saved_and_take_effect_immediately(
@@ -124,7 +125,13 @@ def test_the_secret_is_never_sent_back(client, env_file, monkeypatch):
     assert "abc123" not in str(body)
 
 
-def _plaid_error(code: str) -> Exception:
+# Plaid issues 24-hex client IDs and 30-hex secrets. Tests use correctly shaped
+# fakes so they exercise the refusal path rather than the format guard.
+FAKE_ID = "a1b2c3d4e5f60718293a4b5c"
+FAKE_SECRET = "0f1e2d3c4b5a69788796a5b4c3d2e1"
+
+
+def plaid_refusal(code: str) -> Exception:
     """A refusal shaped like the SDK's, which carries its reason in `body`."""
     exc = RuntimeError("plaid said no")
     exc.body = f'{{"error_code": "{code}", "error_type": "INVALID_INPUT"}}'
@@ -141,7 +148,7 @@ def test_sandbox_keys_are_named_as_such_rather_than_called_invalid(client, monke
     def only_sandbox_works(plaid_api, *args, **kwargs):
         if getattr(plaid_api, "_env", None) == "sandbox":
             return "link-sandbox-token"
-        raise _plaid_error("INVALID_API_KEYS")
+        raise plaid_refusal("INVALID_API_KEYS")
 
     monkeypatch.setattr(
         link.plaid_client, "make_client",
@@ -149,7 +156,7 @@ def test_sandbox_keys_are_named_as_such_rather_than_called_invalid(client, monke
     )
     monkeypatch.setattr(link.plaid_client, "create_link_token", only_sandbox_works)
 
-    resp = client.post("/api/link/setup", json={"client_id": "abc", "secret": "sandbox-sec"})
+    resp = client.post("/api/link/setup", json={"client_id": FAKE_ID, "secret": FAKE_SECRET})
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert "Sandbox" in detail
@@ -160,14 +167,15 @@ def test_keys_that_work_nowhere_are_reported_as_wrong(client, monkeypatch):
     monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
     monkeypatch.setattr(
         link.plaid_client, "create_link_token",
-        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("INVALID_API_KEYS")),
+        lambda *a, **k: (_ for _ in ()).throw(plaid_refusal("INVALID_API_KEYS")),
     )
 
     detail = client.post(
-        "/api/link/setup", json={"client_id": "typo", "secret": "typo"}
+        "/api/link/setup", json={"client_id": FAKE_ID, "secret": FAKE_SECRET}
     ).json()["detail"]
-    assert "does not recognise" in detail
-    assert "Sandbox" not in detail
+    # Correctly shaped keys that work nowhere: the account, not the typing.
+    assert "Production access" in detail
+    assert "Trial plan" in detail
 
 
 def test_a_different_refusal_is_passed_through_not_guessed_at(client, monkeypatch):
@@ -175,11 +183,11 @@ def test_a_different_refusal_is_passed_through_not_guessed_at(client, monkeypatc
     monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
     monkeypatch.setattr(
         link.plaid_client, "create_link_token",
-        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("PRODUCTS_NOT_ENABLED")),
+        lambda *a, **k: (_ for _ in ()).throw(plaid_refusal("PRODUCTS_NOT_ENABLED")),
     )
 
     detail = client.post(
-        "/api/link/setup", json={"client_id": "abc", "secret": "def"}
+        "/api/link/setup", json={"client_id": FAKE_ID, "secret": FAKE_SECRET}
     ).json()["detail"]
     assert "PRODUCTS_NOT_ENABLED" in detail
 
@@ -189,9 +197,9 @@ def test_a_failed_attempt_still_leaves_nothing_behind(client, env_file, monkeypa
     monkeypatch.setattr(link.plaid_client, "make_client", lambda s: object())
     monkeypatch.setattr(
         link.plaid_client, "create_link_token",
-        lambda *a, **k: (_ for _ in ()).throw(_plaid_error("INVALID_API_KEYS")),
+        lambda *a, **k: (_ for _ in ()).throw(plaid_refusal("INVALID_API_KEYS")),
     )
 
-    client.post("/api/link/setup", json={"client_id": "nope", "secret": "nope"})
+    client.post("/api/link/setup", json={"client_id": FAKE_ID, "secret": FAKE_SECRET})
     assert client.get("/api/link/setup").json()["configured"] is False
-    assert "nope" not in env_file.read_text()
+    assert FAKE_ID not in env_file.read_text()

@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { api } from '../api'
 import { Card } from './ui'
 
+// Plaid issues fixed-width hex. Knowing the length lets the form say when a paste
+// came up short rather than leaving Plaid to refuse it with a generic message.
+const CLIENT_ID_LENGTH = 24
+const SECRET_LENGTH = 30
+
 /** First-run setup for Plaid credentials.
  *
  * Without this the first thing a new person does is press "Connect a bank" and
@@ -13,6 +18,7 @@ import { Card } from './ui'
 export function PlaidSetup({ onDone }: { onDone: () => void }) {
   const [clientId, setClientId] = useState('')
   const [secret, setSecret] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -72,22 +78,44 @@ export function PlaidSetup({ onDone }: { onDone: () => void }) {
             autoComplete="off"
             spellCheck={false}
             placeholder="5f9a2c1e8b7d4a0012c3e4f5"
-            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
-                       focus:border-brand-500 focus:outline-none"
+            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono
+                       text-sm focus:border-brand-500 focus:outline-none"
           />
+          {clientId !== '' && clientId.length !== CLIENT_ID_LENGTH && (
+            <span className="mt-1 block text-xs text-amber-700">
+              {clientId.length} characters — Plaid&apos;s client IDs are {CLIENT_ID_LENGTH}.
+            </span>
+          )}
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-gray-500">Secret</span>
+          <span className="flex items-baseline justify-between">
+            <span className="text-xs font-medium text-gray-500">Secret</span>
+            <button
+              type="button"
+              onClick={() => setShowSecret((v) => !v)}
+              className="text-xs font-medium text-brand-600 hover:underline"
+            >
+              {showSecret ? 'Hide' : 'Show'}
+            </button>
+          </span>
           <input
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
-            type="password"
+            type={showSecret ? 'text' : 'password'}
             autoComplete="off"
             spellCheck={false}
-            placeholder="••••••••••••••••••••••••"
-            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
-                       focus:border-brand-500 focus:outline-none"
+            placeholder="••••••••••••••••••••••••••••••"
+            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 font-mono
+                       text-sm focus:border-brand-500 focus:outline-none"
           />
+          {/* A silently truncated paste is the likeliest reason a correct secret
+              gets refused, and it is invisible behind dots. */}
+          {secret !== '' && secret.length !== SECRET_LENGTH && (
+            <span className="mt-1 block text-xs text-amber-700">
+              {secret.length} characters — Plaid&apos;s secrets are {SECRET_LENGTH}.
+              {secret.length < SECRET_LENGTH && ' Part of it may not have pasted.'}
+            </span>
+          )}
         </label>
       </div>
 

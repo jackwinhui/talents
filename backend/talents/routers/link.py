@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -55,36 +56,80 @@ class PlaidCredentials(BaseModel):
     plaid_env: str = "production"
 
 
-def _plaid_error_code(exc: Exception) -> str:
-    """Plaid's own reason for a refusal, or "" when it did not give one.
+def _plaid_error(exc: Exception) -> tuple[str, str]:
+    """Plaid's own code and message, or ("", "") when it did not answer at all.
 
-    The SDK raises with the response body attached as JSON rather than putting
-    anything useful in the message, so without unpacking it every failure looks
-    identical to the caller.
+    The SDK puts the response body on the exception as JSON rather than anything
+    useful in the message, so without unpacking it every failure - including one
+    where Plaid was never reached - looks identical to the caller.
     """
     body = getattr(exc, "body", None)
     if not body:
-        return ""
+        return "", ""
     try:
-        return str(json.loads(body).get("error_code") or "")
+        parsed = json.loads(body)
     except (ValueError, TypeError):
-        return ""
+        return "", ""
+    return str(parsed.get("error_code") or ""), str(parsed.get("error_message") or "")
+
+
+# Plaid issues fixed-width hex for both. Checking the shape separates a mangled
+# paste - a truncated copy, a stray space, the masked dots - from credentials that
+# are formed correctly and are being refused for some other reason entirely.
+_CLIENT_ID_LEN = 24
+_SECRET_LEN = 30
+_HEX = re.compile(r"[0-9a-f]+")
+
+
+def _malformed(client_id: str, secret: str) -> str:
+    for label, value, expected in (
+        ("client ID", client_id, _CLIENT_ID_LEN),
+        ("secret", secret, _SECRET_LEN),
+    ):
+        if not _HEX.fullmatch(value):
+            return (
+                f"That {label} contains characters Plaid never uses — it should be "
+                f"{expected} letters a–f and digits. Something has been copied along "
+                "with it, or the masked dots were copied instead of the value."
+            )
+        if len(value) != expected:
+            return (
+                f"That {label} is {len(value)} characters; Plaid's are {expected}. "
+                "It looks truncated — use the copy button next to the field rather "
+                "than selecting the text."
+            )
+    return ""
 
 
 def _diagnose(client_id: str, secret: str, env: str, exc: Exception) -> str:
     """Say what is actually wrong, rather than that something is.
 
-    `INVALID_API_KEYS` covers both a mistyped key and a perfectly good key used
-    against the wrong environment, and by far the most common version of the
-    latter is pasting the Sandbox secret: it is the one the dashboard shows first,
-    and it sits directly above the production secret it gets confused with. The
-    two are told apart by trying the other environment - if the credentials work
-    there, nothing is wrong with them except where they were pointed.
+    `INVALID_API_KEYS` is the hard case: Plaid returns it, with the message
+    "invalid client_id or secret provided", for a mistyped key, for a key used
+    against the wrong environment, and for a correctly copied production key on an
+    account that has not been granted production access. Those need opposite
+    responses - re-copy the keys, versus leave them alone and go and enable the
+    Trial plan - so the answer is worked out rather than guessed.
     """
-    code = _plaid_error_code(exc)
-    if code and code != "INVALID_API_KEYS":
-        return f"Plaid refused these credentials: {code}."
+    code, message = _plaid_error(exc)
 
+    # No code at all means Plaid never answered. Blaming the credentials for a
+    # dropped connection sends someone off re-copying keys that were always fine.
+    if not code:
+        return (
+            "Could not reach Plaid to check those credentials. Check your internet "
+            f"connection and try again. ({type(exc).__name__})"
+        )
+
+    if code != "INVALID_API_KEYS":
+        return f"Plaid refused these credentials — {code}: {message}"
+
+    shape = _malformed(client_id, secret)
+    if shape:
+        return shape
+
+    # Well-formed but unrecognised. If the same pair works in the other
+    # environment, the keys are right and only the environment was wrong.
     other = "sandbox" if env.lower() == "production" else "production"
     try:
         plaid_client.create_link_token(
@@ -93,20 +138,26 @@ def _diagnose(client_id: str, secret: str, env: str, exc: Exception) -> str:
             required_if_supported=IF_SUPPORTED_BY_KIND["bank"],
         )
     except Exception:
-        return (
-            "Plaid does not recognise that client ID and secret. Copy them again "
-            "from Developers → Keys, and check the client ID has not picked up a "
-            "stray space."
-        )
+        pass
+    else:
+        if other == "sandbox":
+            return (
+                "Those are your Sandbox keys. Sandbox only returns made-up test "
+                "data, so Talents needs the Production secret instead — same page, "
+                "same client ID, but the secret listed under Production."
+            )
+        return "Those keys work in Production. Switch the environment to production."
 
-    if other == "sandbox":
-        return (
-            "Those are your Sandbox keys. Sandbox only returns made-up test data, "
-            "so Talents needs the Production secret instead — same page, same "
-            "client ID, but the secret listed under Production. If there is no "
-            "production secret there yet, apply for the free Trial plan first."
-        )
-    return "Those keys work in Production. Switch the environment to production."
+    # Correctly formed, and rejected everywhere. Overwhelmingly this is an account
+    # that can display production keys but has not been granted production access.
+    return (
+        "Those keys are the right shape, so they are probably not mistyped — Plaid "
+        "is refusing them because this account does not have Production access yet. "
+        "In the Plaid dashboard the Production keys are shown before they work. "
+        "Apply for the free Trial plan (Developers → Keys, or the banner on the "
+        "overview page); it is usually approved instantly, and the same keys will "
+        "then be accepted here."
+    )
 
 
 class _Credentials:
@@ -172,7 +223,7 @@ def save_credentials(payload: PlaidCredentials) -> dict:
         })
         reload_settings()
         log.warning("Rejected Plaid credentials (%s): %s",
-                    _plaid_error_code(exc) or "no code", str(exc)[:200])
+                    _plaid_error(exc)[0] or "no code", str(exc)[:200])
         raise HTTPException(400, _diagnose(client_id, secret, payload.plaid_env, exc)) from exc
 
     log.info("Plaid credentials saved to %s", ENV_PATH)
